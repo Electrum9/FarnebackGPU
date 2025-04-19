@@ -40,9 +40,11 @@ def main(video):
         print("starting processing")
         processed = process_frame_with_cuda(frame)
         print("done processing")
-
+        difference = frame-processed
+        
         # Save or display
         plt.imsave("frame.png", processed)
+        plt.imsave("difference.png", difference)
         breakpoint()
 
     cap.release()
