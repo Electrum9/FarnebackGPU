@@ -18,6 +18,8 @@
     // ** just define the filter in the kernel so each one has it in register memory --> the thread can figure out which row it means
         // Pros: avoid computation time, kind of like a look up 
         // Cons: have to store in global memory -> shared memory (potential bank conflict) vs each thread computing it themselves
+        // Pros: avoid computation time, kind of like a look up 
+        // Cons: have to store in global memory -> shared memory (potential bank conflict) vs each thread computing it themselves
 // stride is variable? Yes --> should be 1 or 2
 // assumption: padding will be done on the CPU before passing into the GPU kernel --> have boundary checks in the logic
     // warp divergence with different branches? 

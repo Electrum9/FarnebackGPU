@@ -1,18 +1,13 @@
-#include <cuda_runtime.h>
-#include <stdio.h>
 #include <iostream>
 
 #define TILE_ROWS 32 // 32 threads *
-#define TILE_COLS 32 // 64 threads
+#define TILE_COLS 64 // 64 threads
 
-__global__ void invert_colors(float* input, float* output, int height, int width) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int total = height * width;
-    if (idx < total) {
-        output[idx] = 1 - input[idx];  // Simple invert
-    }
-}
-
+/*
+kernel size = 5, radius = 5//2 = 2
+there are as many threads as there are output elements in the very final output (after the vertical pass)
+assumption is that the image is already padded BEFORE passing into the convolution filter
+*/
 __global__ void convolution1DKernel(float* input, float* output, int input_height, int input_width, int filter_size, int stride)
 {
     // __shared__ float input_tile[TILE_ROWS * stride + 4][TILE_COLS * stride + 4]; //to hold the input tile elements (+4 for the halo region) --> formula comes from reversing the conv output formula
@@ -36,7 +31,6 @@ __global__ void convolution1DKernel(float* input, float* output, int input_heigh
 
     // FILTERS
     float filter[5] = {1.0f/16, 4.0f/16, 6.0f/16, 4.0f/16, 1.0f/16};
-    // float filter[5] = {1.0f, 4.0f, 6.0f, 4.0f, 1.0f};
 
     // LOADING IN THE DATA
     for (int row = ty; row < TILE_ROWS * stride + 4; row += bdy) {
@@ -85,61 +79,5 @@ __global__ void convolution1DKernel(float* input, float* output, int input_heigh
             }
         }
         output[outy * input_width + outx] = result;
-
-        // Debug print
-        // if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0) {
-        //     printf("Running kernel! block=(%d, %d), thread=(%d, %d)\n", blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y);
-        // }
-
-        // if (outy < 2 && outx < 2) {
-        //     printf("Thread (%d, %d) => output[%d][%d] = %f\n", 
-        //         outy, outx, outy, outx, result);
-        // }
-
     }
 }
-
-extern "C"
-void process_frame(float* input, float* output, int height, int width) {
-    int total = height * width;
-    float* d_in;
-    float* d_out;
-    printf("height=%d\n", height);
-    printf("width=%d\n", width);
-    printf("total=%d\n", total);
-
-    cudaMalloc(&d_in, total * sizeof(float));
-    cudaMalloc(&d_out, total * sizeof(float));
-
-    cudaMemcpy(d_in, input, total*sizeof(float), cudaMemcpyHostToDevice);
-
-    // printf("First few input values:\n");
-    // for (int i = 0; i < 10 && i < total; ++i) {
-    //     printf("input[%d] = %f\n", i, input[i]);
-    // }
-
-    dim3 threads(TILE_COLS, TILE_ROWS);
-    dim3 blocks((width + TILE_COLS - 1) / TILE_COLS, 
-                (height + TILE_ROWS - 1) / TILE_ROWS);
-    
-    // Use the convolution kernel instead of invert_colors
-    int filter_size = 5; // Your filter is 5x5
-    int stride = 1;      // Using stride of 1 as in your code
-    convolution1DKernel<<<blocks, threads>>>(d_in, d_out, height, width, filter_size, stride);
-    cudaDeviceSynchronize();
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA error: %s\n", cudaGetErrorString(err));
-    }
-
-    cudaMemcpy(output, d_out, total*sizeof(float), cudaMemcpyDeviceToHost);
-
-    // printf("First few output values:\n");
-    // for (int i = 0; i < 10 && i < total; ++i) {
-    //     printf("output[%d] = %f\n", i, output[i]);
-    // }
-
-    cudaFree(d_in);
-    cudaFree(d_out);
-}
-
