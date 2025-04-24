@@ -76,6 +76,6 @@
          }
      }
  
-     output[outy * input_width + outx] = result;
+     output[outy * (input_width - 2*ksizeHalf) + outx] = result;
  }
  
