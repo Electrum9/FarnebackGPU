@@ -8,34 +8,9 @@
 #define bdx blockDim.x
 #define bdy blockDim.y
 
-
-
-
-// Q: Will filter be hardcoded (aka filter size) --> do they all require the same size? 
-    // have it stored in an array in global memory (5x5, 3x3) 
-    // https://docs.opencv.org/3.4/d4/d1f/tutorial_pyramids.html
-    // each thread will compute the part of the filter it needs (which row/which column)
-    // ** just define the filter in the kernel so each one has it in register memory --> the thread can figure out which row it means
-        // Pros: avoid computation time, kind of like a look up 
-        // Cons: have to store in global memory -> shared memory (potential bank conflict) vs each thread computing it themselves
-        // Pros: avoid computation time, kind of like a look up 
-        // Cons: have to store in global memory -> shared memory (potential bank conflict) vs each thread computing it themselves
-// stride is variable? Yes --> should be 1 or 2
-// assumption: padding will be done on the CPU before passing into the GPU kernel --> have boundary checks in the logic
-    // warp divergence with different branches? 
-
-    //** for now, STRIDE = 1 */
-// __global__ void convolution1DKernel(float* input, float* filter, float* output, 
-//                                     int input_height, int input_width,
-//                                     int filter_size, int stride)
 #define TILE_ROWS 32 // 32 threads *
 #define TILE_COLS 32 // 64 threads
 __constant__ float gaussianBlur_filter[5] = {1.0f/16, 4.0f/16, 6.0f/16, 4.0f/16, 1.0f/16};
-/*
-kernel size = 5, radius = 5//2 = 2
-there are as many threads as there are output elements in the very final output (after the vertical pass)
-assumption is that the image is already padded BEFORE passing into the convolution filter
-*/
 template<int stride, int ksizeHalf>
 __global__ void convolution1DKernel(float* input, const float* __restrict__ vFilter,
     const float* __restrict__ hFilter, float* output, int input_height, int input_width, int filter_size)
@@ -197,7 +172,13 @@ void polynomialExpansion(const float* d_src, int width, int height, int polyN, f
     double ig11, ig03, ig33, ig55;
     prepareGaussian(polyN, sigma, g, xg, xxg, ig11, ig03, ig33, ig55);
     setPolynomialExpansionConsts(polyN, g.data(), xg.data(), xxg.data(), float(ig11), float(ig03), float(ig33), float(ig55));
-
+    float *d_g, *d_xg, *d_xxg;
+    cudaMalloc(&d_g,  (2*polyN+1)*sizeof(float));
+    cudaMalloc(&d_xg, (2*polyN+1)*sizeof(float));
+    cudaMalloc(&d_xxg,(2*polyN+1)*sizeof(float));
+    cudaMemcpy(d_g,  g.data(),  (2*polyN+1)*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_xg, xg.data(), (2*polyN+1)*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_xxg,xxg.data(),(2*polyN+1)*sizeof(float), cudaMemcpyHostToDevice);
     // Create 6 streams for each convolution calls 
     cudaStream_t streams[6];
     for(int i = 0; i < 6; ++i)
@@ -236,12 +217,12 @@ void polynomialExpansion(const float* d_src, int width, int height, int polyN, f
     
 
     // for now we dont define shared memory  as it's allocated inside the Conv1D kernel
-    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[0]>>>(d_in, c_g, c_g, d_C, height, width, filterSize);
-    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[1]>>>(d_in, c_g, c_xg, d_Ix, height, width, filterSize);
-    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[2]>>>(d_in, c_xg, c_g, d_Iy, height, width, filterSize);
-    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[3]>>>(d_in, c_g, c_xxg, d_Ixx, height, width, filterSize);
-    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[4]>>>(d_in, c_xxg, c_g, d_Iyy, height, width, filterSize);
-    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[5]>>>(d_in, c_xg, c_xg, d_Ixy, height, width, filterSize);
+    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[0]>>>(d_in, d_g, d_g, d_C, height, width, filterSize);
+    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[1]>>>(d_in, d_g, d_xg, d_Ix, height, width, filterSize);
+    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[2]>>>(d_in, d_xg, d_g, d_Iy, height, width, filterSize);
+    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[3]>>>(d_in, d_g, d_xxg, d_Ixx, height, width, filterSize);
+    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[4]>>>(d_in, d_xxg, d_g, d_Iyy, height, width, filterSize);
+    convolution1DKernel<stride,HALF_POLY_KERNEL_SIZE><<<blocks,threads,0,streams[5]>>>(d_in, d_xg, d_xg, d_Ixy, height, width, filterSize);
     // wait for all streams
     for(int i = 0; i < 6; ++i)
         cudaStreamSynchronize(streams[i]);
@@ -268,7 +249,9 @@ void polynomialExpansion(const float* d_src, int width, int height, int polyN, f
     cudaFree(d_outB);
     cudaFree(d_outC);
     cudaFree(d_in); 
-
+    cudaFree(d_g);
+    cudaFree(d_xg);
+    cudaFree(d_xxg);
 
  }
 

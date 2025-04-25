@@ -1,0 +1,166 @@
+#include <cuda_runtime.h>
+#include <stdio.h>
+#include <iostream>
+
+#define TILE_ROWS 32 // 32 threads *
+#define TILE_COLS 32 // 64 threads
+
+__global__ void invert_colors(float* input, float* output, int height, int width) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = height * width;
+    if (idx < total) {
+        output[idx] = 1 - input[idx];  // Simple invert
+    }
+}
+
+#define tx threadIdx.x
+#define ty threadIdx.y
+#define bx blockIdx.x
+#define by blockIdx.y
+#define bdx blockDim.x
+#define bdy blockDim.y
+__constant__ float gaussianBlur_filter[5] = {1.0f/16, 4.0f/16, 6.0f/16, 4.0f/16, 1.0f/16};
+template<int stride, int ksizeHalf>
+__global__ void convolution1DKernel(float* input, const float* __restrict__ vFilter,
+    const float* __restrict__ hFilter, float* output, int input_height, int input_width, int filter_size)
+{
+    // __shared__ float input_tile[TILE_ROWS * stride + 4][TILE_COLS * stride + 4]; //to hold the input tile elements (+4 for the halo region) --> formula comes from reversing the conv output formula
+    // __shared__ float horizontal_tile[TILE_ROWS * stride + 4][TILE_COLS]; // to hold the elements after the horizontal pass
+    //const int ksizeHalf = filter_size / /2
+    __shared__ float input_tile[TILE_ROWS * stride + 2*ksizeHalf][TILE_COLS * stride + 2*ksizeHalf]; //to hold the input tile elements (+4 for the halo region) --> formula comes from reversing the conv output formula
+    __shared__ float horizontal_tile[TILE_ROWS * stride + 2*ksizeHalf][TILE_COLS]; // to hold the elements after the horizontal pass
+    // final output is [TILE_ROWS][TILE_COLS]
+    for (int row = ty; row < TILE_ROWS*stride + 2*ksizeHalf; row += bdy) {
+        for (int col = tx; col < TILE_COLS*stride + 2*ksizeHalf; col += bdx) {
+          input_tile[row][col] = 0.0f;
+        }
+    }
+    __syncthreads();
+      
+
+    int NUM_BANKS = 32;
+
+    int outx = bx * bdx + tx; // x-coordinate of the output
+    int outy = by * bdy + ty; // y-coordinate of the output
+    // if (tx == 0 && ty == 0 && bx==0 && by==0) {
+    //     printf("Device sees filter taps: ");
+    //     for(int k = -ksizeHalf; k <= ksizeHalf; ++k) {
+    //         float tapv = ((filter_size==5)
+    //                      ? gaussianBlur_filter[k+ksizeHalf]
+    //                      : vFilter[k+ksizeHalf]);
+    //         float taph = ((filter_size==5)
+    //         ? gaussianBlur_filter[k+ksizeHalf]
+    //         : hFilter[k+ksizeHalf]);
+    //         printf("%f ....%f", tapv, taph);
+    //     }
+    //     printf("\n");
+    // }
+    // if (bx==0 && by==0 && tx==0 && ty==0) {
+    //     printf("Dev c_g: ");
+    //     for(int k = -ksizeHalf; k<=ksizeHalf; ++k) {
+    //         printf("%0.4f ", c_g[k+ksizeHalf]);
+    //     }
+    //     printf("\\n");
+    // }
+    //__syncthreads();
+    // FILTERS, if kernel size is 5, load the guassianBlur_filter, else use input vfilter and hfilter
+    const float* vF = (filter_size == 5) ? gaussianBlur_filter : vFilter;
+    const float* hF = (filter_size == 5) ? gaussianBlur_filter : hFilter;
+
+    // LOADING IN THE DATA
+    for (int row = ty; row < TILE_ROWS * stride + 2*ksizeHalf; row += bdy) {
+        for (int col = tx; col < TILE_COLS * stride + 2*ksizeHalf; col += bdx){
+            int inputx = bx * bdx * stride + col - ksizeHalf; // to adjust for the halo region
+            int inputy = by * bdy * stride + row - ksizeHalf;
+
+            // check if data is within bounds 
+            if (inputx >= 0 && inputx < input_width && inputy >= 0 && inputy < input_height){
+                input_tile[row][col] = input[inputy * input_width + inputx];
+            }
+        }
+    }
+    __syncthreads();
+
+    // HORIZONTAL PASS
+    for (int row=ty; row < TILE_ROWS * stride + 2*ksizeHalf; row += bdy){
+        for (int col = tx; col < TILE_COLS; col += bdx){
+            float result = 0.0f;
+            int hrow = row; 
+            int hcol = col * stride + ksizeHalf;
+
+            // need to iterate from col-2 to col+2
+            for (int k = -ksizeHalf; k <= ksizeHalf; ++ k){
+                result += input_tile[hrow][hcol + k] * hF[k+ksizeHalf];  // should it be hrow+ ksizehalf?
+            }
+
+            // want to write into shared memory with cyclic shifting
+            int rotated_col = (col + row) % NUM_BANKS; // or should this be NUM_BANKS or TILE_COLS
+            horizontal_tile[row][rotated_col] = result;
+        }
+    }
+    __syncthreads();
+
+    // VERTICAL PASS
+    float result = 0.0f;
+    int vrow = ty * stride + ksizeHalf;
+    for (int k = -ksizeHalf; k<= ksizeHalf; ++k){
+        int row_offset = vrow + k;
+        if (row_offset >= 0 && row_offset < TILE_ROWS * stride + 2*ksizeHalf) {
+            int rotated_col = (tx + row_offset) % NUM_BANKS;
+            result += horizontal_tile[row_offset][rotated_col] * vF[k + ksizeHalf];
+        }
+    }
+    int outW = input_width  - 2*ksizeHalf;   // == original image width
+    int outH = input_height - 2*ksizeHalf;   // == original image height
+
+    if (outx < outW && outy < outH) {
+        output[outy * outW + outx] = result;
+    }
+    //output[outy * (input_width - 2*ksizeHalf) + outx] = result; // use oriignal width without padding!!!!!
+}
+
+extern "C"
+void process_frame(float* input, float* output, int height, int width) {
+    int total = height * width;
+    int total_nopad = (height-4) * (width-4);
+    float* d_in;
+    float* d_out;
+    printf("height=%d\n", height);
+    printf("width=%d\n", width);
+    printf("total=%d\n", total);
+
+    cudaMalloc(&d_in, total * sizeof(float));
+    cudaMalloc(&d_out, total_nopad * sizeof(float));
+
+    cudaMemcpy(d_in, input, total*sizeof(float), cudaMemcpyHostToDevice);
+
+    // printf("First few input values:\n");
+    // for (int i = 0; i < 10 && i < total; ++i) {
+    //     printf("input[%d] = %f\n", i, input[i]);
+    // }
+
+    dim3 threads(TILE_COLS, TILE_ROWS);
+    dim3 blocks((width - 4 + TILE_COLS - 1) / TILE_COLS, 
+                (height - 4+ TILE_ROWS - 1) / TILE_ROWS);
+    
+    // Use the convolution kernel instead of invert_colors
+    int filter_size = 5; // Your filter is 5x5
+    int stride = 1;      // Using stride of 1 as in your code
+    convolution1DKernel<1,2><<<blocks, threads>>>(d_in, nullptr, nullptr, d_out, height, width, filter_size);
+    cudaDeviceSynchronize();
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA error: %s\n", cudaGetErrorString(err));
+    }
+
+    cudaMemcpy(output, d_out, total_nopad*sizeof(float), cudaMemcpyDeviceToHost);
+
+    // printf("First few output values:\n");
+    // for (int i = 0; i < 10 && i < total; ++i) {
+    //     printf("output[%d] = %f\n", i, output[i]);
+    // }
+
+    cudaFree(d_in);
+    cudaFree(d_out);
+}
+
