@@ -26,43 +26,13 @@ __global__ void convolution1DKernel(float* input, const float* __restrict__ vFil
 {
     // __shared__ float input_tile[TILE_ROWS * stride + 4][TILE_COLS * stride + 4]; //to hold the input tile elements (+4 for the halo region) --> formula comes from reversing the conv output formula
     // __shared__ float horizontal_tile[TILE_ROWS * stride + 4][TILE_COLS]; // to hold the elements after the horizontal pass
-    //const int ksizeHalf = filter_size / /2
     __shared__ float input_tile[TILE_ROWS * stride + 2*ksizeHalf][TILE_COLS * stride + 2*ksizeHalf]; //to hold the input tile elements (+4 for the halo region) --> formula comes from reversing the conv output formula
     __shared__ float horizontal_tile[TILE_ROWS * stride + 2*ksizeHalf][TILE_COLS]; // to hold the elements after the horizontal pass
     // final output is [TILE_ROWS][TILE_COLS]
-    for (int row = ty; row < TILE_ROWS*stride + 2*ksizeHalf; row += bdy) {
-        for (int col = tx; col < TILE_COLS*stride + 2*ksizeHalf; col += bdx) {
-          input_tile[row][col] = 0.0f;
-        }
-    }
-    __syncthreads();
-      
-
     int NUM_BANKS = 32;
 
-    int outx = bx * bdx + tx; // x-coordinate of the output
-    int outy = by * bdy + ty; // y-coordinate of the output
-    // if (tx == 0 && ty == 0 && bx==0 && by==0) {
-    //     printf("Device sees filter taps: ");
-    //     for(int k = -ksizeHalf; k <= ksizeHalf; ++k) {
-    //         float tapv = ((filter_size==5)
-    //                      ? gaussianBlur_filter[k+ksizeHalf]
-    //                      : vFilter[k+ksizeHalf]);
-    //         float taph = ((filter_size==5)
-    //         ? gaussianBlur_filter[k+ksizeHalf]
-    //         : hFilter[k+ksizeHalf]);
-    //         printf("%f ....%f", tapv, taph);
-    //     }
-    //     printf("\n");
-    // }
-    // if (bx==0 && by==0 && tx==0 && ty==0) {
-    //     printf("Dev c_g: ");
-    //     for(int k = -ksizeHalf; k<=ksizeHalf; ++k) {
-    //         printf("%0.4f ", c_g[k+ksizeHalf]);
-    //     }
-    //     printf("\\n");
-    // }
-    //__syncthreads();
+    int outx = bx * bdx + tx; // x-coordinate of the output (adjusting the padding)
+    int outy = by * bdy + ty; // y-coordinate of the output (adjustinng the padding)
     // FILTERS, if kernel size is 5, load the guassianBlur_filter, else use input vfilter and hfilter
     const float* vF = (filter_size == 5) ? gaussianBlur_filter : vFilter;
     const float* hF = (filter_size == 5) ? gaussianBlur_filter : hFilter;
@@ -70,9 +40,9 @@ __global__ void convolution1DKernel(float* input, const float* __restrict__ vFil
     // LOADING IN THE DATA
     for (int row = ty; row < TILE_ROWS * stride + 2*ksizeHalf; row += bdy) {
         for (int col = tx; col < TILE_COLS * stride + 2*ksizeHalf; col += bdx){
-            int inputx = bx * bdx * stride + col - ksizeHalf; // to adjust for the halo region
-            int inputy = by * bdy * stride + row - ksizeHalf;
-
+            int inputx = bx * bdx * stride + col;
+            int inputy = by * bdy * stride + row;
+            
             // check if data is within bounds 
             if (inputx >= 0 && inputx < input_width && inputy >= 0 && inputy < input_height){
                 input_tile[row][col] = input[inputy * input_width + inputx];
@@ -92,7 +62,6 @@ __global__ void convolution1DKernel(float* input, const float* __restrict__ vFil
             for (int k = -ksizeHalf; k <= ksizeHalf; ++ k){
                 result += input_tile[hrow][hcol + k] * hF[k+ksizeHalf];  // should it be hrow+ ksizehalf?
             }
-
             // want to write into shared memory with cyclic shifting
             int rotated_col = (col + row) % NUM_BANKS; // or should this be NUM_BANKS or TILE_COLS
             horizontal_tile[row][rotated_col] = result;
@@ -110,13 +79,7 @@ __global__ void convolution1DKernel(float* input, const float* __restrict__ vFil
             result += horizontal_tile[row_offset][rotated_col] * vF[k + ksizeHalf];
         }
     }
-    int outW = input_width  - 2*ksizeHalf;   // == original image width
-    int outH = input_height - 2*ksizeHalf;   // == original image height
-
-    if (outx < outW && outy < outH) {
-        output[outy * outW + outx] = result;
-    }
-    //output[outy * (input_width - 2*ksizeHalf) + outx] = result; // use oriignal width without padding!!!!!
+    output[outy * (input_width - 2*ksizeHalf) + outx] = result; // use oriignal width without padding!!!!!
 }
 
 extern "C"
@@ -134,11 +97,6 @@ void process_frame(float* input, float* output, int height, int width) {
 
     cudaMemcpy(d_in, input, total*sizeof(float), cudaMemcpyHostToDevice);
 
-    // printf("First few input values:\n");
-    // for (int i = 0; i < 10 && i < total; ++i) {
-    //     printf("input[%d] = %f\n", i, input[i]);
-    // }
-
     dim3 threads(TILE_COLS, TILE_ROWS);
     dim3 blocks((width - 4 + TILE_COLS - 1) / TILE_COLS, 
                 (height - 4+ TILE_ROWS - 1) / TILE_ROWS);
@@ -154,11 +112,6 @@ void process_frame(float* input, float* output, int height, int width) {
     }
 
     cudaMemcpy(output, d_out, total_nopad*sizeof(float), cudaMemcpyDeviceToHost);
-
-    // printf("First few output values:\n");
-    // for (int i = 0; i < 10 && i < total; ++i) {
-    //     printf("output[%d] = %f\n", i, output[i]);
-    // }
 
     cudaFree(d_in);
     cudaFree(d_out);
