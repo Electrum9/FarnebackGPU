@@ -20,17 +20,20 @@ lib.process_frame.argtypes = [
 ]
 
 def process_frame_with_cuda(frame, frame_idx, padding=0):
-    frame = np.pad(frame, pad_width=padding, mode='edge')
     h, w = frame.shape
-    frame_in = np.ascontiguousarray(frame, dtype=np.float32)
-    frame_out = np.empty_like(frame_in)
-
+    pad = 2
+    padded = np.pad(frame, ((pad,pad),(pad,pad)), mode='constant', constant_values= 0)
+    h_pad, w_pad = padded.shape
+    frame_in = np.ascontiguousarray(padded, dtype=np.float32)
+    boop = np.ascontiguousarray(frame, dtype=np.float32)
+    frame_out = np.empty_like(boop)
+    
     print(f"\n[Frame {frame_idx}] CUDA version:")
     start = time.time()
     lib.process_frame(
         frame_in.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
         frame_out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-        h, w
+        h_pad, w_pad
     )
     print(f"CUDA took {time.time() - start:.4f} seconds")
     return frame_out
@@ -51,6 +54,7 @@ def process_frame_with_python(frame_np, frame_idx):
     start = time.time()
     out = F.conv2d(frame, kernel_h, padding=(0, 2))
     out = F.conv2d(out, kernel_v, padding=(2, 0))
+    
     print(f"PyTorch took {time.time() - start:.4f} seconds")
     return out.squeeze().cpu().numpy()
 
