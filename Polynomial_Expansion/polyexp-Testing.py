@@ -234,7 +234,7 @@ def main(video):
         ret, frame = cap.read()
         if not ret:
             break
-
+        #frame = cv2.resize(frame,(320,180))
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
         pad =5 

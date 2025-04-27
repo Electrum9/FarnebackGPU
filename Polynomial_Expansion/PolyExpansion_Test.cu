@@ -102,7 +102,11 @@ __global__ void convolution1DKernel(float* input,
             result += horizontal_tile[row_offset][rotated_col] * vF[k + ksizeHalf];
         }
     }
+    // check if thread indices are withing frame bound, in case H,W arent dividable by Tile size
+    if (outx < (input_width  - 2*ksizeHalf) && outy < (input_height - 2*ksizeHalf)) 
+    { 
     output[outy * (input_width - 2*ksizeHalf) + outx] = result; // use oriignal width without padding!!
+    }
 }
 
 
