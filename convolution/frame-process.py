@@ -123,7 +123,8 @@ def medium_image_s1(video, stride=1): #640x360
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
-    frame = cv2.resize(frame, (644, 364))
+    # frame = cv2.resize(frame, (644, 364))
+    frame = cv2.resize(frame, (640, 360))
     
     # RUNNING CUDA VERSION
     
@@ -158,7 +159,7 @@ def smallest_image_s1(video, stride=1): #320, 180
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
-    frame = cv2.resize(frame, (324, 184))
+    frame = cv2.resize(frame, (320, 180))
     
     # RUNNING CUDA VERSION
     cuda_output = process_frame_with_cuda(frame, frame_idx, stride)
