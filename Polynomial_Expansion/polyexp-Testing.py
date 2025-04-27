@@ -227,57 +227,153 @@ def process_frame_with_cuda(frame, polyN=5, frame_idx= 0):
 
     return outA, outB, outC, dC, Ix, Iy, Ixx, Iyy, Ixy
 
-def main(video):
+
+def get_frame_small(video):
     cap = cv2.VideoCapture(video)
     frame_idx = 0
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        #frame = cv2.resize(frame,(320,180))
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
-        pad =5 
-        padded = np.pad(frame, ((pad,pad),(pad,pad)), mode='constant', constant_values= 0)
-        A_cuda, B_cuda, C_cuda, dC_cuda, Ix_cuda, Iy_cuda, Ixx_cuda, Iyy_cuda, Ixy_cuda = process_frame_with_cuda(frame, 5, frame_idx)
-        print("A matrix shape:", A_cuda.shape)
-        print("B vector shape:", B_cuda.shape)
-        print("C scalar shape:", C_cuda.shape)
-        print(f"\n[Frame {frame_idx}] Python version:")
-        c = np.ones_like(frame)
-        start2 = time.time()
-        A_py, B_py, C_py = farneback_polyexp_numpy(frame, n=5, sigma=1.0)
-        print(f"Python version took {time.time() - start2:.4f} seconds")
-        dC_py,  Ix_py,  Iy_py,  Ixx_py,  Iyy_py,  Ixy_py  = get_raw_moments_torch(frame, polyN=5, sigma=1.0)
-        def stats(diff):
-            return {
-                'mean_abs': np.mean(np.abs(diff)),
-                'max_abs':  np.max(np.abs(diff)),
-                'rmse':     np.sqrt(np.mean(diff**2))
-            }
-        # Get the error stats
-        err_A = stats(A_cuda - A_py)
-        err_B = stats(B_cuda - B_py)
-        err_C = stats(C_cuda - C_py)
-        names    = ['dC', 'Ix', 'Iy', 'Ixx', 'Iyy', 'Ixy']
-        cuda_arr = [dC_cuda, Ix_cuda, Iy_cuda, Ixx_cuda, Iyy_cuda, Ixy_cuda]
-        py_arr   = [dC_py,   Ix_py,   Iy_py,   Ixx_py,   Iyy_py,   Ixy_py]
+    
+    ret, frame = cap.read()
+    if not ret:
+        cap.release()
+        return
 
-        for name, c_arr, p_arr in zip(names, cuda_arr, py_arr):
-            diff = c_arr - p_arr
-            e = stats(diff)
-            print(f"Error stats for {name}: mean={e['mean_abs']:.6f}, "
-                f"max={e['max_abs']:.6f}, rmse={e['rmse']:.6f}")
-
-        print("Error stats for A (2×2 matrix):", err_A)
-        print("Error stats for B (2-vector):     ", err_B)
-        print("Error stats for C (scalar):       ", err_C)
-       
-        breakpoint()
-        frame_idx +=1
-
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
+    frame = cv2.resize(frame, (320, 180))
+     
     cap.release()
     cv2.destroyAllWindows()
+    return frame
+
+def get_frame_medium(video):
+    cap = cv2.VideoCapture(video)
+    frame_idx = 0
+    
+    ret, frame = cap.read()
+    if not ret:
+        cap.release()
+        return
+
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
+    frame = cv2.resize(frame, (640, 360))
+     
+    cap.release()
+    cv2.destroyAllWindows()
+    return frame
+
+def get_frame_large(video):
+    cap = cv2.VideoCapture(video)
+    frame_idx = 0
+    
+    ret, frame = cap.read()
+    if not ret:
+        cap.release()
+        return
+
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
+     
+    cap.release()
+    cv2.destroyAllWindows()
+    return frame
+    
+    
+def run_code(frame, stride=1):
+    pad = 5 
+    frame_idx = 0
+    padded = np.pad(frame, ((pad,pad),(pad,pad)), mode='constant', constant_values= 0)
+    A_cuda, B_cuda, C_cuda, dC_cuda, Ix_cuda, Iy_cuda, Ixx_cuda, Iyy_cuda, Ixy_cuda = process_frame_with_cuda(frame, 5, frame_idx)
+    print("A matrix shape:", A_cuda.shape)
+    print("B vector shape:", B_cuda.shape)
+    print("C scalar shape:", C_cuda.shape)
+    print(f"\n[Frame {frame_idx}] Python version:")
+    c = np.ones_like(frame)
+    start2 = time.time()
+    A_py, B_py, C_py = farneback_polyexp_numpy(frame, n=5, sigma=1.0)
+    print(f"Python version took {time.time() - start2:.4f} seconds")
+    dC_py,  Ix_py,  Iy_py,  Ixx_py,  Iyy_py,  Ixy_py  = get_raw_moments_torch(frame, polyN=5, sigma=1.0)
+    def stats(diff):
+        return {
+            'mean_abs': np.mean(np.abs(diff)),
+            'max_abs':  np.max(np.abs(diff)),
+            'rmse':     np.sqrt(np.mean(diff**2))
+        }
+    # Get the error stats
+    err_A = stats(A_cuda - A_py)
+    err_B = stats(B_cuda - B_py)
+    err_C = stats(C_cuda - C_py)
+    names    = ['dC', 'Ix', 'Iy', 'Ixx', 'Iyy', 'Ixy']
+    cuda_arr = [dC_cuda, Ix_cuda, Iy_cuda, Ixx_cuda, Iyy_cuda, Ixy_cuda]
+    py_arr   = [dC_py,   Ix_py,   Iy_py,   Ixx_py,   Iyy_py,   Ixy_py]
+
+    for name, c_arr, p_arr in zip(names, cuda_arr, py_arr):
+        diff = c_arr - p_arr
+        e = stats(diff)
+        print(f"Error stats for {name}: mean={e['mean_abs']:.6f}, "
+            f"max={e['max_abs']:.6f}, rmse={e['rmse']:.6f}")
+
+    print("Error stats for A (2×2 matrix):", err_A)
+    print("Error stats for B (2-vector):     ", err_B)
+    print("Error stats for C (scalar):       ", err_C)
+
+    
+def main(video):
+    run_code(get_frame_large(video))
+    run_code(get_frame_medium(video))
+    run_code(get_frame_small(video))
+    
+    
+    # cap = cv2.VideoCapture(video)
+    # frame_idx = 0
+    # while cap.isOpened():
+    #     ret, frame = cap.read()
+    #     if not ret:
+    #         break
+
+    #     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    #     frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
+    #     pad =5 
+    #     padded = np.pad(frame, ((pad,pad),(pad,pad)), mode='constant', constant_values= 0)
+    #     A_cuda, B_cuda, C_cuda, dC_cuda, Ix_cuda, Iy_cuda, Ixx_cuda, Iyy_cuda, Ixy_cuda = process_frame_with_cuda(frame, 5, frame_idx)
+    #     print("A matrix shape:", A_cuda.shape)
+    #     print("B vector shape:", B_cuda.shape)
+    #     print("C scalar shape:", C_cuda.shape)
+    #     print(f"\n[Frame {frame_idx}] Python version:")
+    #     c = np.ones_like(frame)
+    #     start2 = time.time()
+    #     A_py, B_py, C_py = farneback_polyexp_numpy(frame, n=5, sigma=1.0)
+    #     print(f"Python version took {time.time() - start2:.4f} seconds")
+    #     dC_py,  Ix_py,  Iy_py,  Ixx_py,  Iyy_py,  Ixy_py  = get_raw_moments_torch(frame, polyN=5, sigma=1.0)
+    #     def stats(diff):
+    #         return {
+    #             'mean_abs': np.mean(np.abs(diff)),
+    #             'max_abs':  np.max(np.abs(diff)),
+    #             'rmse':     np.sqrt(np.mean(diff**2))
+    #         }
+    #     # Get the error stats
+    #     err_A = stats(A_cuda - A_py)
+    #     err_B = stats(B_cuda - B_py)
+    #     err_C = stats(C_cuda - C_py)
+    #     names    = ['dC', 'Ix', 'Iy', 'Ixx', 'Iyy', 'Ixy']
+    #     cuda_arr = [dC_cuda, Ix_cuda, Iy_cuda, Ixx_cuda, Iyy_cuda, Ixy_cuda]
+    #     py_arr   = [dC_py,   Ix_py,   Iy_py,   Ixx_py,   Iyy_py,   Ixy_py]
+
+    #     for name, c_arr, p_arr in zip(names, cuda_arr, py_arr):
+    #         diff = c_arr - p_arr
+    #         e = stats(diff)
+    #         print(f"Error stats for {name}: mean={e['mean_abs']:.6f}, "
+    #             f"max={e['max_abs']:.6f}, rmse={e['rmse']:.6f}")
+
+    #     print("Error stats for A (2×2 matrix):", err_A)
+    #     print("Error stats for B (2-vector):     ", err_B)
+    #     print("Error stats for C (scalar):       ", err_C)
+       
+    #     breakpoint()
+    #     frame_idx +=1
+
+    # cap.release()
+    # cv2.destroyAllWindows()
 
 if __name__=="__main__":
     main("walking.mp4")

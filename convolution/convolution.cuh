@@ -4,7 +4,6 @@
 #define TILE_COLS 32 // 64 threads
 __constant__ float gaussianBlur_filter[5] = {1.0f/16, 4.0f/16, 6.0f/16, 4.0f/16, 1.0f/16};
 
-
 template<int stride, int ksizeHalf>
 __global__ void convolution1DKernel(
     float* input,
@@ -44,48 +43,49 @@ template<int stride, int ksizeHalf>
  
      // LOADING IN THE DATA
      for (int row = ty; row < TILE_ROWS * stride + 2*ksizeHalf; row += bdy) {
-         for (int col = tx; col < TILE_COLS * stride + 2*ksizeHalf; col += bdx){
-             int inputx = bx * bdx * stride + col - ksizeHalf; // to adjust for the halo region
-             int inputy = by * bdy * stride + row - ksizeHalf;
- 
-             // check if data is within bounds 
-             if (inputx >= 0 && inputx < input_width && inputy >= 0 && inputy < input_height){
-                 input_tile[row][col] = input[inputy * input_width + inputx];
-             }
-         }
-     }
+        for (int col = tx; col < TILE_COLS * stride + 2*ksizeHalf; col += bdx){
+            int inputx = bx * bdx * stride + col;
+            int inputy = by * bdy * stride + row;
+            
+            // check if data is within bounds 
+            if (inputx >= 0 && inputx < input_width && inputy >= 0 && inputy < input_height){
+                input_tile[row][col] = input[inputy * input_width + inputx];
+            }
+        }
+    }
      __syncthreads();
  
      // HORIZONTAL PASS
      for (int row=ty; row < TILE_ROWS * stride + 2*ksizeHalf; row += bdy){
-         for (int col = tx; col < TILE_COLS; col += bdx){
-             float result = 0.0f;
-             int hrow = row; 
-             int hcol = col * stride + ksizeHalf;
- 
-             // need to iterate from col-2 to col+2
-             for (int k = -ksizeHalf; k <= ksizeHalf; ++ k){
-                 result += input_tile[hrow][hcol + k] * hF[k+ksizeHalf];  // should it be hrow+ ksizehalf?
-             }
- 
-             // want to write into shared memory with cyclic shifting
-             int rotated_col = (col + row) % NUM_BANKS; // or should this be NUM_BANKS or TILE_COLS
-             horizontal_tile[row][rotated_col] = result;
-         }
-     }
+        for (int col = tx; col < TILE_COLS; col += bdx){
+            float result = 0.0f;
+            int hrow = row; 
+            int hcol = col * stride + ksizeHalf;
+
+            // need to iterate from col-2 to col+2
+            for (int k = -ksizeHalf; k <= ksizeHalf; ++ k){
+                result += input_tile[hrow][hcol + k] * hF[k+ksizeHalf]; 
+            }
+            // want to write into shared memory with cyclic shifting
+            int rotated_col = (col + row) % NUM_BANKS; 
+            horizontal_tile[row][rotated_col] = result;
+        }
+    }
      __syncthreads();
  
      // VERTICAL PASS
-     float result = 0.0f;
-     int vrow = ty * stride + ksizeHalf;
-     for (int k = -ksizeHalf; k<= ksizeHalf; ++k){
-         int row_offset = vrow + k;
-         if (row_offset >= 0 && row_offset < TILE_ROWS * stride + 2*ksizeHalf) {
-             int rotated_col = (tx + row_offset) % NUM_BANKS;
-             result += horizontal_tile[row_offset][rotated_col] * vF[k + ksizeHalf];
-         }
-     }
+    float result = 0.0f;
+    int vrow = ty * stride + ksizeHalf;
+    for (int k = -ksizeHalf; k<= ksizeHalf; ++k){
+        int row_offset = vrow + k;
+        if (row_offset >= 0 && row_offset < TILE_ROWS * stride + 2*ksizeHalf) {
+            int rotated_col = (tx + row_offset) % NUM_BANKS;
+            result += horizontal_tile[row_offset][rotated_col] * vF[k + ksizeHalf];
+        }
+    }
  
-     output[outy * (input_width-2*ksizeHalf) + outx] = result;
+    if (outx < input_width - 2*ksizeHalf && outy < input_height - 2*ksizeHalf) {
+        output[outy * (input_width - 2*ksizeHalf) + outx] = result;
+    }
  }
 
