@@ -32,7 +32,7 @@ $ make poly_exp
 $ python polyexp-Testing.py
 ```
 
-This will print out the times for how long each kernel call takes for each size images. It also shows the error stats on momentum calculations, and matrices A,B,C for Polynomial Expansion.
+This will print out the times for how long each kernel call takes for each size images. It also shows the error stats on momentum calculations (Ic, Ix, Iy, Ixx, Ixy, Iyy), and matrices A,B,C for Polynomial Expansion.
 
 
 To test the Gaussian Pyramid:
@@ -44,4 +44,4 @@ $ python frame-process-gpyr.py
 ```
 
 This will print out the times for how long each kernel call takes for a given frame of the video. Additionally, it will save the images corresponding
-to the different levels of the Gaussian pyramid (denoted as ``level0.png``, ``level1.png``, etc.)
+to the different levels of the Gaussian pyramid (denoted as ``level0.png``, ``level1.png``, etc.) we put break so it just does first frame of the video. But feel free to keep roll it.

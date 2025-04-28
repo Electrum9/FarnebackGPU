@@ -54,7 +54,6 @@ def process_frame_with_python(frame_np, frame_idx):
     print(f"PyTorch took {time.time() - start:.4f} seconds")
     return out.squeeze().cpu().numpy()
 
-
 def main(video):
     cap = cv2.VideoCapture(video)
     frame_idx = 0 
@@ -62,6 +61,9 @@ def main(video):
         ret, frame = cap.read()
         if not ret:
             break
+        imp = np.zeros((64,64), dtype=np.float32)
+        imp[16,16] = 1.0
+        
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
         print("starting processing")
@@ -73,7 +75,8 @@ def main(video):
         print(f"[Frame {frame_idx}] Max difference: {max_diff:.6f}")
         print(f"[Frame {frame_idx}] Mean difference: {abs_diff.mean():.6f}")
         frame_idx += 1
-        difference = frame-processed 
+        difference = frame-processed
+        
         # Save or display
         plt.imsave("frame.png", processed)
         plt.imsave("difference.png", difference)

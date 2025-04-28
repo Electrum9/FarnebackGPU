@@ -74,12 +74,13 @@ def main(video):
         print("done processing")
         print(f"{end-start=}")
 
-        # plt.imsave("frame.png", frame)
-        # for i, img in enumerate(levels):
-        #     plt.imsave(f"level{i}.png", img)
+        plt.imsave("frame.png", frame)
+        for i, img in enumerate(levels):
+            plt.imsave(f"level{i}.png", img)
+        break
 
     cap.release()
     cv2.destroyAllWindows()
 
 if __name__=="__main__":
-    main("../walking.mp4")
+    main("./walking.mp4")

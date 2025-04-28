@@ -19,16 +19,8 @@ lib.process_frame.argtypes = [
     ctypes.c_int,                    # width
 ]
 
-lib.process_frame_s2.argtypes = [
-    ctypes.POINTER(ctypes.c_float),  # input frame
-    ctypes.POINTER(ctypes.c_float),  # output frame
-    ctypes.c_int,                    # height
-    ctypes.c_int,                    # width
-]
-
 function_per_stride = {
     1: lib.process_frame,
-    2: lib.process_frame_s2
 }
 
 def process_frame_with_cuda(frame, frame_idx, stride=1):
@@ -181,41 +173,6 @@ def smallest_image_s1(video, stride=1): #320, 180
 
     cap.release()
     cv2.destroyAllWindows()
-    
-# def smallest_image(video): #320, 180
-#     cap = cv2.VideoCapture(video)
-#     frame_idx = 0
-    
-#     while cap.isOpened():
-#         ret, frame = cap.read()
-#         if not ret:
-#             break
-
-#         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-#         frame = (frame - frame.min()) / (frame.max() - frame.min() + 1e-9)
-#         frame = cv2.resize(frame, (324, 184))
-        
-#         # RUNNING CUDA VERSION
-        
-#         cuda_output = process_frame_with_cuda(frame, frame_idx)
-#         difference = frame-cuda_output
-#         plt.imsave("frame.png", cuda_output)
-#         plt.imsave("difference.png", difference)
-        
-#         # RUNNING PYTORCH VERSION
-#         torch_output = process_frame_with_python(frame, frame_idx)
-#         different = frame - torch_output
-#         plt.imsave("pytorch_frame.png", torch_output)
-#         plt.imsave("pytorch_difference.png", difference)
-        
-#         # COMPARE THE TWO 
-#         abs_diff = np.abs(cuda_output - torch_output)
-#         max_diff = np.max(abs_diff)
-#         print(f"[Frame {frame_idx}] Max difference: {max_diff:.6f}")
-#         print(f"[Frame {frame_idx}] Mean difference: {abs_diff.mean():.6f}")
-
-#     cap.release()
-#     cv2.destroyAllWindows()
 
 def main(video):
     print(f"For one frame, with stride = 1, \n")
@@ -229,4 +186,4 @@ def main(video):
     
 
 if __name__=="__main__":
-    main("../walking.mp4")
+    main("./walking.mp4")
