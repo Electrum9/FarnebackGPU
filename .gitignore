@@ -2,3 +2,5 @@
 
 *.so
 *.o
+openCV/
+build/
