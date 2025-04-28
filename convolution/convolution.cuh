@@ -86,6 +86,7 @@ template<int stride, int ksizeHalf>
  
     // check if thread indices are withing frame bound, in case H,W arent dividable by Tile size
     // divide by stride ( if stride >1 we need to downsample the output image)
+
     if (outx < (input_width  - 2*ksizeHalf)/ stride && outy < (input_height - 2*ksizeHalf)/stride) 
     { 
         output[outy * (input_width - 2*ksizeHalf)/stride + outx] = result; // use oriignal width without padding!!

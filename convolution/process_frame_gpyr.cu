@@ -73,7 +73,7 @@ void gaussian_pyramid(float *output, int input_height, int input_width, int num_
     cudaMalloc(&prev_img_zp, sizeof(float)*zp_size);
 
     zero_pad(prev_img, prev_img_zp, prev_height, prev_width, 2, 2);
-    conv_gaussian(prev_img_zp, curr_img, prev_height, prev_width);
+    conv_gaussian(prev_img_zp, curr_img, prev_height+4, prev_width+4);
 
     cudaError_t err = cudaGetLastError();
     printf("level=%d\n", i);
@@ -89,7 +89,6 @@ void gaussian_pyramid(float *output, int input_height, int input_width, int num_
     //running_size += prev_height * prev_width;
     prev_img = curr_img;
     curr_img = prev_img + prev_height*prev_width;
-    return;
   }
 }
 
