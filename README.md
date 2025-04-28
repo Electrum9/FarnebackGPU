@@ -19,13 +19,13 @@ To test Convolution:
     cd convolution  
     make process_frame  
     python frame-process.py  
-This should generate some images: frame.png, difference.png, pytorch_frame.png, and pytorch_difference.png. It will also print the timing and errors found between the CUDA and pytorch implementations of the functions for the different sizes of images.
+This should generate some images: frame.png, difference.png, pytorch_frame.png, and pytorch_difference.png. It will also print the timing and errors found between the CUDA and pytorch implementations of the functions for the different sizes of images.  
 
 To test the Polynomial Expansion:  
     cd Polynomial_Expansion  
     make poly_exp  
     python polyexp-Testing.py  
-This will print out the times for how long each kernel call takes for each size images.
+This will print out the times for how long each kernel call takes for each size images.  
 
 To test the Gaussian Pyramid:  
     cd convolution  
