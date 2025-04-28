@@ -32,7 +32,7 @@ $ make poly_exp
 $ python polyexp-Testing.py
 ```
 
-This will print out the times for how long each kernel call takes for each size images.
+This will print out the times for how long each kernel call takes for each size images. It also shows the error stats on momentum calculations, and matrices A,B,C for Polynomial Expansion.
 
 
 To test the Gaussian Pyramid:
